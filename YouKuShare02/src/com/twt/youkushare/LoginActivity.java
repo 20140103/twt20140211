@@ -6,9 +6,16 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.List;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.AlertDialog.Builder;
+import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -25,6 +32,7 @@ public class LoginActivity extends Activity implements OnClickListener {
 	String mTLoginUrl = "http://www.youku.com/index/mlogin";
 	String postData;
 	String cookie;
+	List<String> cookisList;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -35,15 +43,7 @@ public class LoginActivity extends Activity implements OnClickListener {
 		mPassWord = (EditText) findViewById(R.id.password);
 		mLoginButton = (Button) findViewById(R.id.login);
 		mLoginButton.setOnClickListener(this);
-		new Thread() {
-			@Override
-			public void run() {
-				TLog.i(TAG, "Runnable");
-				mRequestUserInfo = new RequestUserInfo();
-				handler.sendEmptyMessage(0);
 
-			}
-		}.start();
 	}
 
 	private Handler handler = new Handler() {
@@ -56,7 +56,8 @@ public class LoginActivity extends Activity implements OnClickListener {
 				TLog.i(TAG, "msg.what = 1");
 				startWebActivity();
 			} else if (msg.what == 2) {
-				TLog.i(TAG, "msg.what = 1");
+				TLog.i(TAG, "msg.what = 2");
+				requestUserInfo();
 			}
 		}
 
@@ -74,9 +75,36 @@ public class LoginActivity extends Activity implements OnClickListener {
 
 	}
 
+	@Override
+	protected void onResume() {
+		// TODO Auto-generated method stub
+		super.onResume();
+		if (!isNetworkAvailable(this)) {
+			showSetNetworkUI(this);
+		} else {
+			requestUserInfo();
+		}
+	}
+
+	private void requestUserInfo() {
+		new Thread() {
+			@Override
+			public void run() {
+				TLog.i(TAG, "Runnable");
+				mRequestUserInfo = new RequestUserInfo();
+				handler.sendEmptyMessage(0);
+
+			}
+		}.start();
+	}
+
 	private void startWebActivity() {
 		Intent intent = new Intent(this, WebActivity.class);
-		intent.putExtra("cookie", cookie);
+		String[] cookies = new String[5];
+		for (int i = 0; i < cookisList.size(); i++) {
+			cookies[i] = cookisList.get(i);
+		}
+		intent.putExtra("cookies", cookies);
 		startActivity(intent);
 		this.finish();
 	}
@@ -112,17 +140,14 @@ public class LoginActivity extends Activity implements OnClickListener {
 			connection.setRequestProperty("Content-Type",
 					"application/x-www-form-urlencoded");
 			connection.setRequestProperty("Charset", "utf-8");
-//			cookie:_l_lgi=354836168; path=/; domain=.youku.com
-
-//			connection.s
 			DataOutputStream dop = new DataOutputStream(
 					connection.getOutputStream());
 			dop.writeBytes(postData);
 			dop.flush();
 			dop.close();
 			cookie = connection.getHeaderField("set-cookie");
-			String[] sessionId = cookie.split(";");
-			TLog.i(TAG, "cookie:" + sessionId[0]);
+			cookisList = connection.getHeaderFields().get("set-cookie");
+			TLog.i(TAG, cookisList.toString());
 			in = new InputStreamReader(connection.getInputStream());
 			BufferedReader bufferedReader = new BufferedReader(in);
 			StringBuffer strBuffer = new StringBuffer();
@@ -148,6 +173,51 @@ public class LoginActivity extends Activity implements OnClickListener {
 		}
 		TLog.i(TAG, "result:" + result);
 		return result;
+	}
+
+	public void showSetNetworkUI(final Context context) {
+		// 提示对话框
+		AlertDialog.Builder builder = new Builder(context);
+		builder.setTitle("网络设置提示")
+				.setMessage("网络连接不可用,是否进行设置?")
+				.setPositiveButton("设置", new DialogInterface.OnClickListener() {
+
+					@Override
+					public void onClick(DialogInterface dialog, int which) {
+						// TODO Auto-generated method stub
+						Intent intent = null;
+						intent = new Intent(
+								android.provider.Settings.ACTION_WIFI_SETTINGS);
+						context.startActivity(intent);
+					}
+				})
+				.setNegativeButton("取消", new DialogInterface.OnClickListener() {
+
+					@Override
+					public void onClick(DialogInterface dialog, int which) {
+						LoginActivity.this.finish();
+						dialog.dismiss();
+					}
+				}).show();
+	}
+
+	public boolean isNetworkAvailable(Context context) {
+
+		ConnectivityManager manager = (ConnectivityManager) context
+				.getApplicationContext().getSystemService(
+						Context.CONNECTIVITY_SERVICE);
+
+		if (manager == null) {
+			return false;
+		}
+
+		NetworkInfo networkinfo = manager.getActiveNetworkInfo();
+
+		if (networkinfo == null || !networkinfo.isAvailable()) {
+			return false;
+		}
+
+		return true;
 	}
 
 }
